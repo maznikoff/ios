@@ -468,8 +468,7 @@ func Enumerate(pathToBackups string) ([]Backup, error) {
 							manifest.Lockdown.ProductVersion,
 							manifest.Lockdown.ProductType,
 							manifest.IsEncrypted,
-						}
-					)
+						})
 				}
 			}
 		}
