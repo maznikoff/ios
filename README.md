@@ -7,7 +7,7 @@ If you are using an encrypted backup, it also can read parts of the keychain and
 Without options, `irestore` will list the current backups found on your machine. You may reference a backup by name or guid.
 
 ```shell
-# irestore
+# irestore [-path PATH]
 MyPhone 5069636b6c656448657272696e674170706c6573
 MyPad 43686f636f6c61746552616d656b696e73546f6f
 ```
@@ -15,13 +15,13 @@ MyPad 43686f636f6c61746552616d656b696e73546f6f
 The first argument is the device id or device name:
 
 ```shell
-# irestore MyPad
+# irestore [-path PATH] MyPad
 Selected MyPad 43686f636f6c61746552616d656b696e73546f6f
 Usage:
-    ls [domain]
-    restore domain dest
-    dumpkeys [outputfile]
-    apps
+    irestore [-path PATH] deviceID/deviceName ls [domain]
+    irestore [-path PATH] deviceID/deviceName restore domain dest
+    irestore [-path PATH] deviceID/deviceName dumpkeys [outputfile]
+    irestore [-path PATH] deviceID/deviceName apps
 ```
 
 The `ls` command will list domains or files in a domain.
@@ -34,7 +34,7 @@ The `apps` command will list the installed apps.
 
 _Changes to the database format in recent iOS releases:_
 
-## iOS 10 (deprecated)
+## iOS 10
 
 iOS 10 is using a different format for the manifest. It stores the data in a sqlite3 database called `Manifest.db`, which contains two tables. And the actual files themselves are moved to subdirectories whose names are the first two characters of the filename.
 
@@ -51,10 +51,10 @@ The `file` field is an encrypted with AES128-CBC.  The key is the first 16 bytes
 
 The decrypted data is a binary plist, specifically a key-valued archive of a `MBFile` object.  This object has a `ProtectionClass` field that gives the files protection class (used for choosing an appropriate key from the keybag) and an `EncryptionKey` field containing an `NSMutableData` with the same format as the encryption key in the MBDB file. (A little endian uint32 containing the protection class, followed by the file's key AES-WRAPed by the key for that protection class.)
 
+
 ## iOS 10.1
 
-The properties table described above is now empty, and the "file" column is a bare plist. To keep the code simple, I no longer support the iOS 10.0 
-backup format.
+The properties table described above is now empty, and the "file" column is a bare plist.
 
 
 ## iOS 10.2
