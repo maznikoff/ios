@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"flag"
 	"path"
 	"strings"
 
@@ -233,14 +234,17 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 }
 
 func main() {
-	// first component is udid
-	mm, err := backup.Enumerate()
+	pathToBackupsPtr := flag.String("path", path.Join(os.Getenv("HOME"), "Library/Application Support/MobileSync/Backup"), "path to dir where backups are stored")
+	flag.Parse()
+
+	mm, err := backup.Enumerate(*pathToBackupsPtr)
 	must(err)
 
 	var selected *backup.Backup
 
-	if len(os.Args) > 1 {
-		key := os.Args[1]
+	// component without flag is udid
+	if len(flag.Args()) >= 1 {
+		key := flag.Args()[0]
 		for _, man := range mm {
 			dashed := strings.Contains(man.FileName, "-")
 			if man.DeviceName == key && !dashed {
@@ -270,7 +274,7 @@ func main() {
 	}
 	fmt.Println("Selected", selected.DeviceName, selected.FileName)
 
-	db, err := backup.Open(selected.FileName)
+	db, err := backup.Open(*pathToBackupsPtr, selected.FileName)
 	must(err)
 
 	if db.Manifest.IsEncrypted {
@@ -278,7 +282,7 @@ func main() {
 		must(err)
 	}
 	must(db.Load())
-	if len(os.Args) < 2 {
+	if len(flag.Args()) < 2 {
 		for _, domain := range db.Domains() {
 			fmt.Println(domain)
 		}
@@ -287,27 +291,27 @@ func main() {
 
 	help := func() {
 		fmt.Println(`Usage:
-    ls [domain]
-    restore domain dest
-    dumpkeys [outputfile]
-    apps
+    [-path PATH] ls [domain]
+    [-path PATH] restore domain dest
+    [-path PATH] dumpkeys [outputfile]
+    [-path PATH] apps
 `)
 	}
 
 	var cmd string
-	if len(os.Args) > 2 {
-		cmd = os.Args[2]
+	if len(flag.Args()) > 1 {
+		cmd = flag.Args()[1]
 	}
 	switch cmd {
 	case "ls", "list":
-		if len(os.Args) > 3 {
-			list(db, os.Args[3])
+		if len(flag.Args()) > 2 {
+			list(db, flag.Args()[2])
 		} else {
 			domains(db)
 		}
 	case "restore":
-		if len(os.Args) > 4 {
-			restore(db, os.Args[3], os.Args[4])
+		if len(flag.Args()) > 3 {
+			restore(db, flag.Args()[2], flag.Args()[3])
 		} else {
 			help()
 		}
@@ -315,8 +319,8 @@ func main() {
 		apps(db)
 	case "dumpkeys":
 		var out string
-		if len(os.Args) > 3 {
-			out = os.Args[3]
+		if len(flag.Args()) > 2 {
+			out = flag.Args()[2]
 		}
 		dumpkeys(db, out)
 	default:

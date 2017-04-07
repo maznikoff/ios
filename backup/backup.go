@@ -352,11 +352,9 @@ type Backup struct {
 }
 
 // Enumerate lists the available backups
-func Enumerate() ([]Backup, error) {
+func Enumerate(pathToBackups string) ([]Backup, error) {
 	var all []Backup
-	home := os.Getenv("HOME")
-	dir := path.Join(home, "Library/Application Support/MobileSync/Backup")
-	r, err := os.Open(dir)
+	r, err := os.Open(pathToBackups)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +364,7 @@ func Enumerate() ([]Backup, error) {
 	}
 	for _, fi := range infos {
 		if fi.IsDir() {
-			pl := path.Join(dir, fi.Name(), "Manifest.plist")
+			pl := path.Join(pathToBackups, fi.Name(), "Manifest.plist")
 			if r, err := os.Open(pl); err == nil {
 				defer r.Close()
 				var manifest Manifest
@@ -382,11 +380,10 @@ func Enumerate() ([]Backup, error) {
 }
 
 // Open opens a MobileBackup directory corresponding to a given guid.
-func Open(guid string) (*MobileBackup, error) {
+func Open(pathToBackups string, guid string) (*MobileBackup, error) {
 	var backup MobileBackup
 
-	home := os.Getenv("HOME")
-	backup.Dir = path.Join(home, "Library/Application Support/MobileSync/Backup", guid)
+	backup.Dir = path.Join(pathToBackups, guid)
 	tmp := path.Join(backup.Dir, "Manifest.plist")
 	r, err := os.Open(tmp)
 	if err != nil {
