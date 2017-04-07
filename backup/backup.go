@@ -6,7 +6,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha1"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -25,6 +27,10 @@ import (
 	"github.com/dunhamsteve/plist"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+const BackupVersioniOS10 string = "3.0"
+const BackupVersioniOS101 string = "3.1"
+const BackupVersioniOS102 string = "3.2"
 
 var be = binary.BigEndian
 
@@ -117,13 +123,62 @@ type MobileBackup struct {
 	Manifest Manifest
 	Records  []Record
 	Keybag   keybag.Keybag
+	Version  string
 
 	BlobKey []byte
 }
 
+// StatusPlist encapsulates a mobile backup status file
+type StatusPlist struct {
+        Version  string
+}
+
 // SetPassword decrypts the keychain.
 func (mb *MobileBackup) SetPassword(pass string) error {
-	return mb.Keybag.SetPassword(pass)
+	if mb.Version == BackupVersioniOS10 { // iOS 10
+
+		// Holds the salt until we key the MobileBackup object (iOS 10.x).
+	        Properties := make(map[string][]byte)
+
+		path := path.Join(mb.Dir, "Manifest.db")
+
+		db, err := sql.Open("sqlite3", path)
+		if err != nil {
+			return err
+		}
+
+                // Properties contains the salt and sha256(password||salt)
+                rows, err := db.Query("select key,value from properties")
+                if err != nil {
+                        return err
+                }
+                for rows.Next() {
+                        var key string
+                        var value []byte
+                        err = rows.Scan(&key, &value)
+                        if err != nil {
+                                return err
+                        }
+                        Properties[key] = value
+                }
+
+		tmp := append([]byte(pass), Properties["salt"]...)
+		a := sha256.Sum256(tmp)
+
+		// Assuming Backup2 format
+		if !bytes.Equal(a[:], Properties["passwordHash"]) {
+			panic("Bad Password")
+		}
+		fmt.Printf("salt %v\n", Properties["salt"])
+		b := sha1.Sum(tmp)
+		mb.BlobKey = b[:16]
+	}
+
+	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+		return mb.Keybag.SetPassword(pass, true)
+	} else {
+		return mb.Keybag.SetPassword(pass, false)
+	}
 }
 
 func decrypt(key, data []byte) []byte {
@@ -156,12 +211,38 @@ func decrypt(key, data []byte) []byte {
 
 // FileKey finds the key for a given file record
 func (mb *MobileBackup) FileKey(rec Record) []byte {
-	key := mb.Keybag.GetClassKey(uint32(rec.ProtClass))
-	if key != nil {
-		return aeswrap.Unwrap(key, rec.Key[4:])
-	}
-	log.Println("No key for protection class", rec.ProtClass)
+	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+		key := mb.Keybag.GetClassKey(uint32(rec.ProtClass))
+		if key != nil {
+			return aeswrap.Unwrap(key, rec.Key[4:])
+		}
+		log.Println("No key for protection class", rec.ProtClass)
+	} else {
+		if mb.Version == BackupVersioniOS10 { // iOS 10
+			var ok bool
+			if rec.ProtClass == 0 { // New format - read data from database
+				data := decrypt(mb.BlobKey, rec.Key)
+				tmp, _ := kvarchive.UnArchive(bytes.NewReader(data))
+				frec := tmp.(map[string]interface{})
+				if rec.Key, ok = frec["EncryptionKey"].([]byte); !ok {
+					fmt.Println("Bad record", rec.Path, frec)
+					return nil
+				}
+				rec.ProtClass = uint8(frec["ProtectionClass"].(int64))
+			}
+		}
 
+		for _, key := range mb.Keybag.Keys {
+			if key.Class == uint32(rec.ProtClass) {
+				if key.Key != nil {
+					x := aeswrap.Unwrap(key.Key, rec.Key[4:])
+					return x
+				} else {
+					log.Println("Locked key for protection class", rec.ProtClass)
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -400,8 +481,11 @@ func Enumerate(pathToBackups string) ([]Backup, error) {
 // Open opens a MobileBackup directory corresponding to a given guid.
 func Open(pathToBackups string, guid string) (*MobileBackup, error) {
 	var backup MobileBackup
+	var status StatusPlist
 
 	backup.Dir = path.Join(pathToBackups, guid)
+
+	// Read Manifest.plist
 	tmp := path.Join(backup.Dir, "Manifest.plist")
 	r, err := os.Open(tmp)
 	if err != nil {
@@ -413,6 +497,22 @@ func Open(pathToBackups string, guid string) (*MobileBackup, error) {
 		return nil, err
 	}
 	backup.Keybag = keybag.Read(backup.Manifest.BackupKeyBag)
+
+	// Read Status.plist
+	tmp = path.Join(backup.Dir, "Status.plist")
+	r, err = os.Open(tmp)
+        if err != nil {
+                return nil, err
+        }
+        defer r.Close()
+        err = plist.Unmarshal(r, &status)
+        if err != nil {
+                return nil, err
+        }
+
+	backup.Version = status.Version
+
+
 	return &backup, nil
 }
 
@@ -420,10 +520,16 @@ func Open(pathToBackups string, guid string) (*MobileBackup, error) {
 // ios 10.2+ encrypted backups, and must be called before attempting
 // to use any other methods on MobileBackup.
 func (mb *MobileBackup) Load() error {
-	// Try to read old Manifest
-	err := mb.readOldManifest()
-	if err == nil {
-		return nil
+	if mb.Version == BackupVersioniOS10 { // iOS 10
+		fmt.Println("iOS 10.0")
+	} else if mb.Version == BackupVersioniOS101 { // iOS 10.1
+		fmt.Println("iOS 10.1")
+	} else if mb.Version == BackupVersioniOS102 { // iOS 10.2
+		fmt.Println("iOS >= 10.2")
+	} else {
+		fmt.Println("iOS < 10")
+		// Try to read old Manifest
+		return mb.readOldManifest()
 	}
 
 	// try to read new manifest
@@ -462,14 +568,17 @@ func (mb *MobileBackup) readNewManifest() error {
 	var err error
 	fmt.Println("load")
 	tmp := path.Join(mb.Dir, "Manifest.db")
-	mk := mb.Manifest.ManifestKey
 
-	if mk != nil {
-		tmp, err = mb.decryptDatabase(tmp, mk)
-		if err != nil {
-			return err
+	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+		mk := mb.Manifest.ManifestKey
+
+		if mk != nil {
+			tmp, err = mb.decryptDatabase(tmp, mk)
+			if err != nil {
+				return err
+			}
+			defer os.Remove(tmp)
 		}
-		defer os.Remove(tmp)
 	}
 
 	db, err := sql.Open("sqlite3", tmp)
@@ -490,28 +599,54 @@ func (mb *MobileBackup) readNewManifest() error {
 		if err != nil {
 			return err
 		}
-		// Not sure if this happens anymore
-		if domain == nil {
-			continue
-		}
 
-		record.Domain = *domain
+		if mb.Version == BackupVersioniOS10 { // iOS 10
+			if domain != nil {
+				record.Domain = *domain
+			}
+			if path != nil {
+				record.Path = *path
+				record.Length = 1 // until we can determine size
+			}
 
-		tmp, err := kvarchive.UnArchive(bytes.NewReader(data))
-		if err != nil {
-			panic(err)
+			if domain == nil || path == nil {
+				fmt.Println("!!", *id, domain, path, data)
+			}
+
+			if flags == 2 {
+				record.Length = 0
+			}
+
+			record.Key, err = base64.StdEncoding.DecodeString(string(data))
+
+			if err != nil {
+                                panic(err)
+                        }
+
+		} else {
+			// Not sure if this happens anymore
+			if domain == nil {
+				continue
+			}
+
+			record.Domain = *domain
+
+			tmp, err := kvarchive.UnArchive(bytes.NewReader(data))
+			if err != nil {
+				panic(err)
+			}
+			frec := tmp.(map[string]interface{})
+			// TODO - teach kvarchive to read into structures.
+			record.Key, _ = frec["EncryptionKey"].([]byte)
+			record.ProtClass = uint8(frec["ProtectionClass"].(int64))
+			record.Length = uint64(frec["Size"].(int64))
+			record.Mode = uint16(frec["Mode"].(int64))
+			record.Gid = uint32(frec["GroupID"].(int64))
+			record.Uid = uint32(frec["UserID"].(int64))
+			record.Ctime = uint32(frec["Birth"].(int64))
+			record.Atime = uint32(frec["LastModified"].(int64))
+			record.Path = frec["RelativePath"].(string)
 		}
-		frec := tmp.(map[string]interface{})
-		// TODO - teach kvarchive to read into structures.
-		record.Key, _ = frec["EncryptionKey"].([]byte)
-		record.ProtClass = uint8(frec["ProtectionClass"].(int64))
-		record.Length = uint64(frec["Size"].(int64))
-		record.Mode = uint16(frec["Mode"].(int64))
-		record.Gid = uint32(frec["GroupID"].(int64))
-		record.Uid = uint32(frec["UserID"].(int64))
-		record.Ctime = uint32(frec["Birth"].(int64))
-		record.Atime = uint32(frec["LastModified"].(int64))
-		record.Path = frec["RelativePath"].(string)
 
 		mb.Records = append(mb.Records, record)
 	}
