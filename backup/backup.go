@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"time"
 
 	"github.com/chiefbrain/ios/crypto/aeswrap"
 	"github.com/chiefbrain/ios/keybag"
@@ -339,9 +340,12 @@ func (r *reader) Close() error {
 type Manifest struct {
 	BackupKeyBag []byte
 	Lockdown     struct {
-		DeviceName string
+		DeviceName     string
+		ProductVersion string
+		ProductType    string
 	}
 	Applications map[string]map[string]interface{}
+	Date         time.Time
 	IsEncrypted  bool
 	ManifestKey  []byte // this is wrapped
 }
@@ -349,6 +353,10 @@ type Manifest struct {
 type Backup struct {
 	DeviceName string
 	FileName   string
+	Date       time.Time
+        Version    string
+	Device     string
+	Encrypted  bool
 }
 
 // Enumerate lists the available backups
@@ -370,7 +378,17 @@ func Enumerate(pathToBackups string) ([]Backup, error) {
 				var manifest Manifest
 				err = plist.Unmarshal(r, &manifest)
 				if err == nil {
-					all = append(all, Backup{manifest.Lockdown.DeviceName, fi.Name()})
+					all = append(
+						all,
+						Backup{
+							manifest.Lockdown.DeviceName,
+							fi.Name(),
+							manifest.Date,
+							manifest.Lockdown.ProductVersion,
+							manifest.Lockdown.ProductType,
+							manifest.IsEncrypted,
+						}
+					)
 				}
 			}
 		}

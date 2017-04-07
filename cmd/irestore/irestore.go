@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"time"
+	"text/tabwriter"
+	"strconv"
 
 	"bytes"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"flag"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"crypto/aes"
@@ -233,6 +236,14 @@ func restore(db *backup.MobileBackup, domain string, dest string) {
 	fmt.Println("Wrote", total, "bytes")
 }
 
+// exists returns whether the given file or directory exists or not
+func exists(path string) (bool) {
+    _, err := os.Stat(path)
+    if err == nil { return true }
+    if os.IsNotExist(err) { return false }
+    return true
+}
+
 func main() {
 	pathToBackupsPtr := flag.String("path", path.Join(os.Getenv("HOME"), "Library/Application Support/MobileSync/Backup"), "path to dir where backups are stored")
 	flag.Parse()
@@ -267,9 +278,19 @@ func main() {
 	}
 
 	if selected == nil {
+		w:= new(tabwriter.Writer)
+		w.Init(os.Stdout, 0, 8, 2, '\t', 0)
+		fmt.Fprintln(w, "Device Name\tFile Name\tDate\tVersion\tDevice\tEncrypted")
+		fmt.Fprintln(w, "===========\t=========\t====\t=======\t======\t=========")
 		for _, man := range mm {
-			fmt.Println(man.DeviceName, "\t", man.FileName)
+			fmt.Fprintln(w, man.DeviceName +
+					"\t" + man.FileName +
+					"\t" + man.Date.String() +
+					"\t" + man.Version +
+					"\t" + man.Device +
+					"\t" + strconv.FormatBool(man.Encrypted))
 		}
+		w.Flush()
 		return
 	}
 	fmt.Println("Selected", selected.DeviceName, selected.FileName)
@@ -289,13 +310,15 @@ func main() {
 		return
 	}
 
+	name := filepath.Base(os.Args[0])
+
 	help := func() {
-		fmt.Println(`Usage:
-    [-path PATH] ls [domain]
-    [-path PATH] restore domain dest
-    [-path PATH] dumpkeys [outputfile]
-    [-path PATH] apps
-`)
+		fmt.Printf(`Usage:
+    %v [-path PATH] deviceID/deviceName ls [domain]
+    %v [-path PATH] deviceID/deviceName restore domain dest
+    %v [-path PATH] deviceID/deviceName dumpkeys [outputfile]
+    %v [-path PATH] deviceID/deviceName apps
+`, name, name, name, name)
 	}
 
 	var cmd string
