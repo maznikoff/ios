@@ -10,12 +10,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log"
 
 	"encoding/hex"
-
-	"time"
 
 	"github.com/chiefbrain/ios/crypto/aeswrap"
 	"golang.org/x/crypto/pbkdf2"
@@ -127,31 +124,33 @@ func (kb *Keybag) GetClassKey(class uint32) []byte {
 }
 
 // SetPassword decrypts the keybag, recovering some of the keys.
-func (kb *Keybag) SetPassword(password string, encrypted bool) error {
+func (kb *Keybag) SetPassword(password string, encrypted bool) (derivedKey string, err error) {
 	var passkey = []byte(password)
 
 	if encrypted { // iOS 10.2
 		if len(password) == 64 {
 			passkey, _ = hex.DecodeString(password)
 		} else {
-			start := time.Now()
+			//start := time.Now()
 			if kb.AuxIter > 0 {
 				passkey = pbkdf2.Key(passkey, kb.AuxSalt, int(kb.AuxIter), 32, sha256.New)
 			}
 			passkey = pbkdf2.Key(passkey, kb.Salt, int(kb.Iter), 32, sha1.New)
-			fmt.Println("key derivation took", time.Now().Sub(start), "use the password", hex.EncodeToString(passkey), "to skip")
+			//fmt.Println("key derivation took", time.Now().Sub(start), "use the password", hex.EncodeToString(passkey), "to skip")
 		}
 	} else {
 		passkey = pbkdf2.Key([]byte(password), kb.Salt, int(kb.Iter), 32, sha1.New)
 	}
 
+	derivedKey = string(passkey)
+
 	for _, key := range kb.Keys {
 		if key.Wrap == 2 { // 3 means we need 0x835 too, 1 means only 0x835
 			key.Key = aeswrap.Unwrap(passkey, key.WrappedKey)
 			if key.Key == nil {
-				return errors.New("Bad password")
+				return "", errors.New("Bad password")
 			}
 		}
 	}
-	return nil
+	return derivedKey, nil
 }
