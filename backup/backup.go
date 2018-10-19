@@ -187,7 +187,7 @@ func (mb *MobileBackup) SetPassword(pass string) (err error) {
 		mb.BlobKey = b[:16]
 	}
 
-	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+	if mb.Version >= BackupVersioniOS102 { // iOS 10.2
 		_, err = mb.Keybag.SetPassword(pass, true)
 	} else {
 		_, err = mb.Keybag.SetPassword(pass, false)
@@ -225,7 +225,7 @@ func decrypt(key, data []byte) []byte {
 
 // FileKey finds the key for a given file record
 func (mb *MobileBackup) FileKey(rec Record) ([]byte, error) {
-	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+	if mb.Version >= BackupVersioniOS102 { // iOS 10.2
 		key := mb.Keybag.GetClassKey(uint32(rec.ProtClass))
 		if key != nil {
 			if x := aeswrap.Unwrap(key, rec.Key[4:]); x != nil {
@@ -578,7 +578,7 @@ func (mb *MobileBackup) readNewManifest() error {
 	debugPrintln("load")
 	tmp := path.Join(mb.Dir, "Manifest.db")
 
-	if mb.Version == BackupVersioniOS102 { // iOS 10.2
+	if mb.Version >= BackupVersioniOS102 { // iOS 10.2
 		mk := mb.Manifest.ManifestKey
 
 		if mk != nil {
