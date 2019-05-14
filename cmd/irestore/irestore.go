@@ -20,10 +20,10 @@ import (
 
 	"crypto/aes"
 
-	"github.com/chiefbrain/ios/backup"
-	"github.com/chiefbrain/ios/crypto/aeswrap"
-	"github.com/chiefbrain/ios/crypto/gcm"
-	"github.com/chiefbrain/ios/encoding/asn1"
+	"github.com/maznikoff/ios/backup"
+	"github.com/maznikoff/ios/crypto/aeswrap"
+	"github.com/maznikoff/ios/crypto/gcm"
+	"github.com/maznikoff/ios/encoding/asn1"
 	"github.com/dunhamsteve/plist"
 	"golang.org/x/crypto/ssh/terminal"
 )

@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/dunhamsteve/plist"
-	"github.com/gwatts/ios/crypto/aeswrap"
-	"github.com/gwatts/ios/keybag"
-	"github.com/gwatts/ios/kvarchive"
+	"github.com/maznikoff/ios/crypto/aeswrap"
+	"github.com/maznikoff/ios/keybag"
+	"github.com/maznikoff/ios/kvarchive"
 	_ "github.com/mattn/go-sqlite3"
 )
 

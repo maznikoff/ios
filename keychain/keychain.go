@@ -14,10 +14,10 @@ import (
 	"crypto/sha1"
 
 	"github.com/dunhamsteve/plist"
-	"github.com/gwatts/ios/backup"
-	"github.com/gwatts/ios/crypto/aeswrap"
-	"github.com/gwatts/ios/crypto/gcm"
-	"github.com/gwatts/ios/encoding/asn1"
+	"github.com/maznikoff/ios/backup"
+	"github.com/maznikoff/ios/crypto/aeswrap"
+	"github.com/maznikoff/ios/crypto/gcm"
+	"github.com/maznikoff/ios/encoding/asn1"
 )
 
 const (
